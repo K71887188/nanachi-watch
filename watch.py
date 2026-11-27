@@ -13,6 +13,7 @@ Env:
 """
 import json
 import os
+import re
 import sys
 import urllib.request
 import urllib.error
@@ -30,6 +31,19 @@ STOCKS = {"4023.T": "クレハ", "4503.T": "アステラス製薬", "1605.T": "I
 STOCK_DAY_THRESHOLD = 3.0    # % move in one day
 STOCK_WEEK_THRESHOLD = 5.0   # % move over 5 trading days
 JMA_WARNING_URL = "https://www.jma.go.jp/bosai/warning/data/warning/110000.json"  # Saitama
+
+# 世界のベスト (Invesco World Best Equity Open, monthly, no hedge).
+# NAV source: Jiji fund summary page (server-rendered HTML, no key/JS).
+# Fund code 18312991. NAV updates ~22:00 JST on weekdays; the page itself
+# gives the day change, and the latest distribution (monthly, 150 yen) with
+# its settlement date, so a 5-day move can be adjusted for distributions.
+FUND_FCODE = "18312991"
+FUND_NAME = "世界のベスト（毎月決算型・ヘッジなし）"
+FUND_URL = ("https://t2.jiji.com/linkbox?FWCS=tiger&pageID=LB1143_FUND_SUMMARY"
+            "&userID=keiyo-bk_v2&fcode=18312991&tab=1")
+FUND_DAY_THRESHOLD = 3.0    # % move in one day
+FUND_WEEK_THRESHOLD = 5.0   # % move over 5 trading days (distribution-adjusted)
+
 # JMA warning kinds that count as 警報級 (code -> name). 注意報 codes are 2-digit
 # advisories too; we notify on 警報 (status 発表/継続 with these codes) and 特別警報.
 WARNING_CODES = {
@@ -133,6 +147,55 @@ def check_stocks(state):
                    event_type="stock_move")
 
 
+def fetch_fund_nav():
+    """Return (date, nav, day_change, dist_amount, dist_date) from Jiji."""
+    raw = fetch(FUND_URL).decode("utf-8", "replace")
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", raw))
+    m_date = re.search(r"直近情報（(\d{4}/\d{2}/\d{2})）", text)
+    m_nav = re.search(r"基準価額 ([\d,]+)円（\s*([+-]\d+)", text)
+    m_dist = re.search(r"直近分配金 ([\d,]+)円（決算日：(\d{4}/\d{2}/\d{2})）", text)
+    if not (m_date and m_nav):
+        raise ValueError("fund NAV parse failed")
+    nav = int(m_nav.group(1).replace(",", ""))
+    change = int(m_nav.group(2))
+    dist = int(m_dist.group(1).replace(",", "")) if m_dist else 0
+    dist_date = m_dist.group(2) if m_dist else ""
+    return m_date.group(1), nav, change, dist, dist_date
+
+
+def check_fund(state):
+    hist = state.setdefault("fund", [])
+    try:
+        date, nav, change, dist, dist_date = fetch_fund_nav()
+    except Exception as e:
+        print("fund fetch error", e)
+        return
+    if hist and hist[-1]["date"] == date:
+        print("fund already recorded for", date)
+        return
+    first = not hist
+    day = (change / (nav - change) * 100) if nav != change else 0.0
+    week = None
+    if len(hist) >= 4:
+        base = hist[-4]
+        adj = nav + (dist if dist_date and dist_date > base["date"] else 0)
+        week = (adj / base["nav"] - 1) * 100
+    hist.append({"date": date, "nav": nav, "dist": dist, "dist_date": dist_date})
+    state["fund"] = hist[-6:]
+    if first:
+        print("fund seeded:", date, nav)
+        return
+    if abs(day) >= FUND_DAY_THRESHOLD or (week is not None and abs(week) >= FUND_WEEK_THRESHOLD):
+        week_txt = f"、5日比 {week:+.1f}%" if week is not None else ""
+        notify(f"[ファンド] {FUND_NAME}が動きました。基準価額 {nav:,}円、"
+               f"前日比 {day:+.1f}%（{change:+,}円）{week_txt}。"
+               f"分配金 {dist:,}円（決算日 {dist_date}）。理由を調べてください。",
+               event_type="fund_move")
+    else:
+        print(f"fund ok: {date} {nav:,} yen day {day:+.2f}%"
+              + (f" week {week:+.2f}%" if week is not None else ""))
+
+
 def check_weather(state):
     prev = state.setdefault("weather", {})
     try:
@@ -166,6 +229,8 @@ def main():
         check_releases(state)
     elif mode == "stocks":
         check_stocks(state)
+    elif mode == "fund":
+        check_fund(state)
     elif mode == "weather":
         check_weather(state)
     elif mode == "test":
