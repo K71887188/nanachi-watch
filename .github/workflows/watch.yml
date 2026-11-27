@@ -1,0 +1,49 @@
+name: nanachi-watch
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+    - cron: "30 7 * * 1-5"
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "releases | stocks | weather | test"
+        required: true
+        default: "test"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nanachi-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decide mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "0 0 * * *" ]; then
+            echo "mode=releases" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "30 7 * * 1-5" ]; then
+            echo "mode=stocks" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=weather" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run watcher
+        env:
+          HOOK_TOKEN: ${{ secrets.HOOK_TOKEN }}
+        run: python3 watch.py "${{ steps.mode.outputs.mode }}"
+      - name: Commit state
+        run: |
+          git config user.name "nanachi-watch"
+          git config user.email "actions@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet || git commit -m "state: ${{ steps.mode.outputs.mode }} check"
+          git push
