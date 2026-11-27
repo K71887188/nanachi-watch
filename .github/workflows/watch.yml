@@ -2,13 +2,18 @@ name: nanachi-watch
 
 on:
   schedule:
+    # Releases: daily 09:00 JST = 00:00 UTC
     - cron: "0 0 * * *"
+    # Stocks: weekdays 16:30 JST = 07:30 UTC
     - cron: "30 7 * * 1-5"
+    # Fund NAV: weekdays 22:30 JST = 13:30 UTC (NAV updates ~22:00 JST)
+    - cron: "30 13 * * 1-5"
+    # Weather: every 30 minutes
     - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       mode:
-        description: "releases | stocks | weather | test"
+        description: "releases | stocks | fund | weather | test"
         required: true
         default: "test"
 
@@ -33,6 +38,8 @@ jobs:
             echo "mode=releases" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "30 7 * * 1-5" ]; then
             echo "mode=stocks" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "30 13 * * 1-5" ]; then
+            echo "mode=fund" >> "$GITHUB_OUTPUT"
           else
             echo "mode=weather" >> "$GITHUB_OUTPUT"
           fi
