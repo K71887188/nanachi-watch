@@ -58,6 +58,9 @@ def notify(message, source="custom", event_type="notification"):
     req.add_header("Authorization", "Bearer " + token)
     req.add_header("Content-Type", "application/json")
     req.add_header("X-Event-Type", event_type)
+    # Cloudflare rejects the default Python-urllib signature (error 1010);
+    # an explicit UA is required for the webhook call to reach the Worker.
+    req.add_header("User-Agent", "nanachi-watch/1.0 (+https://github.com/K71887188/nanachi-watch)")
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             print("notified:", r.status, message[:80])
@@ -166,7 +169,9 @@ def main():
     elif mode == "weather":
         check_weather(state)
     elif mode == "test":
-        notify("[テスト] nanachi-watch から MuseKnock への疎通テストです。", event_type="test")
+        if not notify("[テスト] nanachi-watch から MuseKnock への疎通テストです。", event_type="test"):
+            save_state(state)
+            return 1
     else:
         print("unknown mode:", mode)
         return 1
