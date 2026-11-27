@@ -1,4 +1,12 @@
 {
+  "fund": [
+    {
+      "date": "2026/11/27",
+      "dist": 150,
+      "dist_date": "2026/11/24",
+      "nav": 8466
+    }
+  ],
   "releases": {
     "Aenvo/MuseLink": "v0.2.2",
     "adbar/trafilatura": "v2.4.0",
