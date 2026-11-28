@@ -8,9 +8,9 @@
     }
   ],
   "releases": {
-    "Aenvo/MuseLink": "v0.2.2",
+    "Aenvo/MuseLink": "v0.3.2",
     "adbar/trafilatura": "v2.4.0",
-    "mvanhorn/last30days-skill": "v4.7.0",
+    "mvanhorn/last30days-skill": "v4.8.0",
     "obsidianmd/obsidian-releases": "v1.15.1"
   },
   "stocks": {
